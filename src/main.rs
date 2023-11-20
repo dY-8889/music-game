@@ -24,6 +24,11 @@ const _MUSIC_BLOCK_SPEED: f32 = 550.0;
 const MUSIC_BLOCK_DESPAWN_POINT: f32 = -400.0;
 const MUSIC_BLOCK_COLOR: Color = Color::YELLOW;
 
+type JudLevel = (f32, f32);
+const JUDGEMENT_LEVEL_PERF: JudLevel = (-210., -230.);
+const JUDGEMENT_LEVEL_GOOD: JudLevel = (-180., -250.);
+const JUDGEMENT_LEVEL_BAD: JudLevel = (-160., -270.);
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -39,23 +44,27 @@ fn main() {
             ..default()
         }))
         .insert_resource(Time::<Fixed>::from_seconds(0.5))
+        .add_event::<KeyPressEvent>()
         .add_systems(Startup, setup)
         .add_systems(Update, bevy::window::close_on_esc)
         .add_systems(
             Update,
-            (keyboard_input, music_block_move, despawn_music_block),
+            (
+                keyboard_input,
+                music_block_move,
+                despawn_music_block,
+                block_judgement,
+            ),
         )
         .add_systems(FixedUpdate, create_music_block)
         .run();
 }
 
-enum _BlockKind {}
+#[derive(Component)]
+struct MusicBlock(BlockLocation);
 
 #[derive(Component)]
-struct MusicBlock;
-
-#[derive(Component)]
-struct TimingBlock(KeyCode);
+struct TimingBlock(BlockLocation);
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(f32);
@@ -73,6 +82,7 @@ struct TimingBundle {
     block: TimingBlock,
 }
 
+#[derive(Clone, Copy, PartialEq)]
 enum BlockLocation {
     A,
     B,
@@ -125,7 +135,7 @@ impl MusicBundle {
                 },
                 ..default()
             },
-            block: MusicBlock,
+            block: MusicBlock(location),
             velocity: Velocity(-5.0),
         }
     }
@@ -144,8 +154,6 @@ impl MusicBundle {
 
 impl TimingBundle {
     fn new(location: BlockLocation) -> Self {
-        let key = location.get_key();
-
         TimingBundle {
             sprite_bundle: SpriteBundle {
                 transform: Transform {
@@ -159,9 +167,47 @@ impl TimingBundle {
                 },
                 ..default()
             },
-            block: TimingBlock(key),
+            block: TimingBlock(location),
         }
     }
+}
+
+#[warn(warnings)]
+#[derive(Resource)]
+struct Scoreboard {
+    perfect: usize,
+    god: usize,
+    bad: usize,
+}
+
+#[derive(Event)]
+struct KeyPressEvent {
+    block_location: BlockLocation,
+}
+
+enum _BlockKind {}
+
+#[derive(Debug, PartialEq)]
+enum JudgmentLevel {
+    _Wonderful,
+    Perfect,
+    Good,
+    Bad,
+    None,
+}
+
+impl JudgmentLevel {
+    fn check(block_position: f32) -> JudgmentLevel {
+        match block_position {
+            y if tuple_if(JUDGEMENT_LEVEL_PERF, y) => JudgmentLevel::Perfect,
+            y if tuple_if(JUDGEMENT_LEVEL_GOOD, y) => JudgmentLevel::Good,
+            y if tuple_if(JUDGEMENT_LEVEL_BAD, y) => JudgmentLevel::Bad,
+            _ => JudgmentLevel::None,
+        }
+    }
+}
+fn tuple_if(tuple: JudLevel, target: f32) -> bool {
+    tuple.1 <= target && target <= tuple.0
 }
 
 fn setup(mut commands: Commands) {
@@ -175,13 +221,39 @@ fn setup(mut commands: Commands) {
 
 fn keyboard_input(
     mut timing_block_query: Query<(&mut Sprite, &TimingBlock)>,
+    mut key_event: EventWriter<KeyPressEvent>,
     keyboard_input: Res<Input<KeyCode>>,
 ) {
     for (mut sprite, key) in &mut timing_block_query {
-        if keyboard_input.pressed(key.0) {
+        if keyboard_input.pressed(key.0.get_key()) {
             sprite.color = BLOCK_PRESSED_COLOR;
+
+            key_event.send(KeyPressEvent {
+                block_location: key.0,
+            });
         } else {
             sprite.color = BLOCK_NORMAL_COLOR;
+        }
+    }
+}
+
+fn block_judgement(
+    mut commands: Commands,
+    music_block_query: Query<(Entity, &Transform, &MusicBlock)>,
+    mut key_press_event: EventReader<KeyPressEvent>,
+) {
+    for event in key_press_event.read() {
+        for (entity, transform, music_block) in &music_block_query {
+            if music_block.0 == event.block_location {
+                let music_y = transform.translation.y;
+
+                let level = JudgmentLevel::check(music_y);
+
+                if level != JudgmentLevel::None {
+                    println!("{:?}: {}", level, music_y);
+                    commands.entity(entity).despawn();
+                }
+            }
         }
     }
 }
@@ -189,7 +261,6 @@ fn keyboard_input(
 fn music_block_move(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in &mut query {
         transform.translation.y += velocity.0;
-        println!("{:?}", transform.translation.y);
     }
 }
 
