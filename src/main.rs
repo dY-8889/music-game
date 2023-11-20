@@ -1,22 +1,28 @@
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 
+// キーを変更したい場合
+// TODO: 構造体で扱うかも
 pub static mut TIMING_KEY_A: KeyCode = KeyCode::D;
 pub static mut TIMING_KEY_B: KeyCode = KeyCode::F;
 pub static mut TIMING_KEY_C: KeyCode = KeyCode::J;
 pub static mut TIMING_KEY_D: KeyCode = KeyCode::K;
 
 const BLOCK_SIZE: Vec3 = Vec3::new(70., 20., 0.);
-const TIMING_BLOCK_Y: f32 = -220.0;
+const BLOCK_NORMAL_COLOR: Color = Color::GRAY;
+const BLOCK_PRESSED_COLOR: Color = Color::RED;
 
-const TIMING_BLOCK_A: Vec2 = Vec2::new(-BLOCK_SIZE.x * 2.0, TIMING_BLOCK_Y);
-const TIMING_BLOCK_B: Vec2 = Vec2::new(-BLOCK_SIZE.x / 1.5, TIMING_BLOCK_Y);
-const TIMING_BLOCK_C: Vec2 = Vec2::new(BLOCK_SIZE.x / 1.5, TIMING_BLOCK_Y);
-const TIMING_BLOCK_D: Vec2 = Vec2::new(BLOCK_SIZE.x * 2.0, TIMING_BLOCK_Y);
+const TIMING_BLOCK_POSITION_Y: f32 = -220.0;
+
+const TIMING_BLOCK_A: Vec2 = Vec2::new(-BLOCK_SIZE.x * 2.0, TIMING_BLOCK_POSITION_Y);
+const TIMING_BLOCK_B: Vec2 = Vec2::new(-BLOCK_SIZE.x / 1.5, TIMING_BLOCK_POSITION_Y);
+const TIMING_BLOCK_C: Vec2 = Vec2::new(BLOCK_SIZE.x / 1.5, TIMING_BLOCK_POSITION_Y);
+const TIMING_BLOCK_D: Vec2 = Vec2::new(BLOCK_SIZE.x * 2.0, TIMING_BLOCK_POSITION_Y);
 
 const MUSIC_BLOCK_START: f32 = 300.0;
-const MUSIC_BLOCK_SPEED: f32 = 550.0;
+const _MUSIC_BLOCK_SPEED: f32 = 550.0;
 const MUSIC_BLOCK_DESPAWN_POINT: f32 = -400.0;
+const MUSIC_BLOCK_COLOR: Color = Color::YELLOW;
 
 fn main() {
     App::new()
@@ -42,6 +48,8 @@ fn main() {
         .add_systems(FixedUpdate, create_music_block)
         .run();
 }
+
+enum _BlockKind {}
 
 #[derive(Component)]
 struct MusicBlock;
@@ -111,7 +119,10 @@ impl MusicBundle {
                     scale: BLOCK_SIZE,
                     ..default()
                 },
-                sprite: Sprite { ..default() },
+                sprite: Sprite {
+                    color: MUSIC_BLOCK_COLOR,
+                    ..default()
+                },
                 ..default()
             },
             block: MusicBlock,
@@ -142,7 +153,10 @@ impl TimingBundle {
                     scale: BLOCK_SIZE,
                     ..default()
                 },
-                sprite: Sprite { ..default() },
+                sprite: Sprite {
+                    color: BLOCK_NORMAL_COLOR,
+                    ..default()
+                },
                 ..default()
             },
             block: TimingBlock(key),
@@ -165,9 +179,9 @@ fn keyboard_input(
 ) {
     for (mut sprite, key) in &mut timing_block_query {
         if keyboard_input.pressed(key.0) {
-            sprite.color = Color::RED;
+            sprite.color = BLOCK_PRESSED_COLOR;
         } else {
-            sprite.color = Color::WHITE;
+            sprite.color = BLOCK_NORMAL_COLOR;
         }
     }
 }
@@ -175,6 +189,7 @@ fn keyboard_input(
 fn music_block_move(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in &mut query {
         transform.translation.y += velocity.0;
+        println!("{:?}", transform.translation.y);
     }
 }
 
