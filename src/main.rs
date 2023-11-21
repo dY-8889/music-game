@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 
@@ -84,11 +86,15 @@ fn main() {
             ),
         )
         .add_systems(FixedUpdate, create_music_block)
+        .add_systems(Update, fixed_time_change)
         .run();
 }
 
 #[derive(Component)]
-struct MusicBlock(BlockLocation, MusicBlockKind);
+struct MusicBlock {
+    location: BlockLocation,
+    kind: MusicBlockKind,
+}
 
 #[derive(Component)]
 struct TimingBlock(BlockLocation);
@@ -201,7 +207,7 @@ impl MusicBundle {
                 },
                 ..default()
             },
-            block: MusicBlock(location, kind),
+            block: MusicBlock { location, kind },
             velocity: Velocity(-5.0),
         }
     }
@@ -214,7 +220,9 @@ impl MusicBundle {
             3 => BlockLocation::D,
             _ => panic!(),
         };
-        MusicBundle::new(location, MusicBlockKind::Normal)
+        let kind = MusicBlockKind::Normal;
+
+        MusicBundle::new(location, kind)
     }
 }
 
@@ -241,7 +249,11 @@ impl TimingBundle {
 impl JudgmentLevel {
     fn check(block_position: f32) -> JudgmentLevel {
         match block_position {
-            // TIMING_BLOCK_POSITION_Y => Wonderful,
+            // TIMING_BLOCK_POSITION_Y => Wonderful, // これだと↓
+            // warning: floating-point types cannot be used in patterns
+            // warning: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+            // note: for more information, see issue #41620 <https://github.com/rust-lang/rust/issues/41620>
+            // note: `#[warn(illegal_floating_point_literal_pattern)]` on by default
             // 合っているかわからないけど一旦これで
             y if TIMING_BLOCK_POSITION_Y == y => Wonderful,
             y if tuple_if(JUDGMENT_LEVEL_PERF, y) => Perfect,
@@ -317,6 +329,14 @@ fn setup(mut commands: Commands) {
         .with_children(|parent| {
             parent.spawn((
                 TextBundle::from_sections([
+                    TextSection::new("Wonderful: ", text_style.clone()),
+                    TextSection::from_style(text_style.clone()),
+                ])
+                .with_style(with_text_style.clone()),
+                Wonderful,
+            ));
+            parent.spawn((
+                TextBundle::from_sections([
                     TextSection::new("Perfect: ", text_style.clone()),
                     TextSection::from_style(text_style.clone()),
                 ])
@@ -356,7 +376,7 @@ fn keyboard_input(
     keyboard_input: Res<Input<KeyCode>>,
 ) {
     for (mut sprite, key) in &mut timing_block_query {
-        if keyboard_input.pressed(key.0.get_key()) {
+        if keyboard_input.just_pressed(key.0.get_key()) {
             sprite.color = BLOCK_PRESSED_COLOR;
 
             key_event.send(KeyPressEvent {
@@ -374,9 +394,10 @@ fn block_judgement(
     mut key_press_event: EventReader<KeyPressEvent>,
     mut score_board: ResMut<Scoreboard>,
 ) {
-    for event in key_press_event.read() {
+    // KeyPressEventを
+    'event: for event in key_press_event.read() {
         for (entity, transform, music_block) in &music_block_query {
-            if music_block.0 == event.block_location {
+            if music_block.location == event.block_location {
                 let music_y = transform.translation.y;
                 let level = JudgmentLevel::check(music_y);
 
@@ -390,6 +411,8 @@ fn block_judgement(
                     }
 
                     commands.entity(entity).despawn();
+
+                    break 'event;
                 }
             }
         }
@@ -433,4 +456,9 @@ fn despawn_music_block(
             score_board.miss();
         }
     }
+}
+
+fn fixed_time_change(mut time: ResMut<Time<Fixed>>) {
+    let rand = thread_rng().gen_range(0.3..=2.0);
+    time.set_timestep(Duration::from_secs_f32(rand));
 }
