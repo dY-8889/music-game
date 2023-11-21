@@ -45,7 +45,12 @@ fn main() {
             }),
             ..default()
         }))
-        .init_resource::<Scoreboard>()
+        .insert_resource(Scoreboard {
+            combo: 0,
+            perfect: 0,
+            good: 0,
+            bad: 0,
+        })
         .insert_resource(Time::<Fixed>::from_seconds(0.5))
         .add_event::<KeyPressEvent>()
         .add_systems(Startup, setup)
@@ -57,6 +62,7 @@ fn main() {
                 music_block_move,
                 despawn_music_block,
                 block_judgement,
+                update_scoreboard,
             ),
         )
         .add_systems(FixedUpdate, create_music_block)
@@ -181,7 +187,7 @@ struct KeyPressEvent {
 }
 
 #[warn(warnings)]
-#[derive(Resource, Default, Debug)]
+#[derive(Resource, Debug)]
 struct Scoreboard {
     combo: usize,
     perfect: usize,
@@ -191,7 +197,7 @@ struct Scoreboard {
 
 enum _BlockKind {}
 
-#[derive(Debug, PartialEq)]
+#[derive(Component, PartialEq)]
 enum JudgmentLevel {
     _Wonderful,
     Perfect,
@@ -235,13 +241,67 @@ impl Scoreboard {
     }
 }
 
+const SCOREBOARD_PADDING: Val = Val::Px(4.0);
+const SCOREBOARD_TEXT_SIZE: f32 = 30.0;
+const SCOREBOARD_TEXT_COLOR: Color = Color::WHITE;
+const SCOREBOARD_TEXT_PADDING: Val = Val::Px(3.0);
+
 fn setup(mut commands: Commands) {
+    let text_style = TextStyle {
+        font_size: SCOREBOARD_TEXT_SIZE,
+        color: SCOREBOARD_TEXT_COLOR,
+        ..default()
+    };
+    let with_text_style = Style {
+        top: SCOREBOARD_TEXT_PADDING,
+        left: SCOREBOARD_TEXT_PADDING,
+        ..default()
+    };
+
     commands.spawn(Camera2dBundle::default());
 
     commands.spawn(TimingBundle::new(BlockLocation::A));
     commands.spawn(TimingBundle::new(BlockLocation::B));
     commands.spawn(TimingBundle::new(BlockLocation::C));
     commands.spawn(TimingBundle::new(BlockLocation::D));
+
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column,
+                top: SCOREBOARD_PADDING,
+                left: SCOREBOARD_PADDING,
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new("Perfect: ", text_style.clone()),
+                    TextSection::from_style(text_style.clone()),
+                ])
+                .with_style(with_text_style.clone()),
+                JudgmentLevel::Perfect,
+            ));
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new("Good: ", text_style.clone()),
+                    TextSection::from_style(text_style.clone()),
+                ])
+                .with_style(with_text_style.clone()),
+                JudgmentLevel::Good,
+            ));
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new("Bad: ", text_style.clone()),
+                    TextSection::from_style(text_style),
+                ])
+                .with_style(with_text_style),
+                JudgmentLevel::Bad,
+            ));
+        });
 }
 
 fn keyboard_input(
@@ -285,6 +345,20 @@ fn block_judgement(
                     commands.entity(entity).despawn();
                 }
             }
+        }
+    }
+}
+
+fn update_scoreboard(
+    score_board: Res<Scoreboard>,
+    mut text_query: Query<(&mut Text, &JudgmentLevel)>,
+) {
+    for (mut text, level) in &mut text_query {
+        text.sections[1].value = match level {
+            JudgmentLevel::Perfect => score_board.perfect.to_string(),
+            JudgmentLevel::Good => score_board.good.to_string(),
+            JudgmentLevel::Bad => score_board.bad.to_string(),
+            _ => "".to_string(),
         }
     }
 }
