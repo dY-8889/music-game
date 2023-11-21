@@ -1,14 +1,16 @@
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 
-// キーを変更したい場合
+use self::JudgmentLevel::{Bad, Good, None, Perfect};
+
+// キーを変更
 // TODO: 構造体で扱うかも
 pub static mut TIMING_KEY_A: KeyCode = KeyCode::D;
 pub static mut TIMING_KEY_B: KeyCode = KeyCode::F;
 pub static mut TIMING_KEY_C: KeyCode = KeyCode::J;
 pub static mut TIMING_KEY_D: KeyCode = KeyCode::K;
 
-const BLOCK_SIZE: Vec3 = Vec3::new(70., 20., 0.);
+const BLOCK_SIZE: Vec2 = Vec2::new(70., 20.);
 const BLOCK_NORMAL_COLOR: Color = Color::GRAY;
 const BLOCK_PRESSED_COLOR: Color = Color::RED;
 
@@ -25,9 +27,9 @@ const MUSIC_BLOCK_DESPAWN_POINT: f32 = -400.0;
 const MUSIC_BLOCK_COLOR: Color = Color::YELLOW;
 
 type JudLevel = (f32, f32);
-const JUDGEMENT_LEVEL_PERF: JudLevel = (-210., -230.);
-const JUDGEMENT_LEVEL_GOOD: JudLevel = (-180., -250.);
-const JUDGEMENT_LEVEL_BAD: JudLevel = (-160., -270.);
+const JUDGMENT_LEVEL_PERF: JudLevel = (-210., -230.); // 判定の範囲
+const JUDGMENT_LEVEL_GOOD: JudLevel = (-180., -250.);
+const JUDGMENT_LEVEL_BAD: JudLevel = (-160., -270.);
 
 fn main() {
     App::new()
@@ -43,6 +45,7 @@ fn main() {
             }),
             ..default()
         }))
+        .init_resource::<Scoreboard>()
         .insert_resource(Time::<Fixed>::from_seconds(0.5))
         .add_event::<KeyPressEvent>()
         .add_systems(Startup, setup)
@@ -126,7 +129,7 @@ impl MusicBundle {
             sprite_bundle: SpriteBundle {
                 transform: Transform {
                     translation: location.music_position().extend(0.0),
-                    scale: BLOCK_SIZE,
+                    scale: BLOCK_SIZE.extend(0.0),
                     ..default()
                 },
                 sprite: Sprite {
@@ -158,7 +161,7 @@ impl TimingBundle {
             sprite_bundle: SpriteBundle {
                 transform: Transform {
                     translation: location.timing_position().extend(0.0),
-                    scale: BLOCK_SIZE,
+                    scale: BLOCK_SIZE.extend(0.0),
                     ..default()
                 },
                 sprite: Sprite {
@@ -172,17 +175,18 @@ impl TimingBundle {
     }
 }
 
-#[warn(warnings)]
-#[derive(Resource)]
-struct Scoreboard {
-    perfect: usize,
-    god: usize,
-    bad: usize,
-}
-
 #[derive(Event)]
 struct KeyPressEvent {
     block_location: BlockLocation,
+}
+
+#[warn(warnings)]
+#[derive(Resource, Default, Debug)]
+struct Scoreboard {
+    combo: usize,
+    perfect: usize,
+    good: usize,
+    bad: usize,
 }
 
 enum _BlockKind {}
@@ -199,15 +203,36 @@ enum JudgmentLevel {
 impl JudgmentLevel {
     fn check(block_position: f32) -> JudgmentLevel {
         match block_position {
-            y if tuple_if(JUDGEMENT_LEVEL_PERF, y) => JudgmentLevel::Perfect,
-            y if tuple_if(JUDGEMENT_LEVEL_GOOD, y) => JudgmentLevel::Good,
-            y if tuple_if(JUDGEMENT_LEVEL_BAD, y) => JudgmentLevel::Bad,
-            _ => JudgmentLevel::None,
+            y if tuple_if(JUDGMENT_LEVEL_PERF, y) => Perfect,
+            y if tuple_if(JUDGMENT_LEVEL_GOOD, y) => Good,
+            y if tuple_if(JUDGMENT_LEVEL_BAD, y) => Bad,
+            _ => None,
         }
     }
 }
 fn tuple_if(tuple: JudLevel, target: f32) -> bool {
     tuple.1 <= target && target <= tuple.0
+}
+
+impl Scoreboard {
+    fn combo(&mut self) {
+        self.combo += 1
+    }
+    fn combo_reset(&mut self) {
+        self.combo = 0
+    }
+    fn perfect(&mut self) {
+        self.perfect += 1;
+        self.combo();
+    }
+    fn good(&mut self) {
+        self.good += 1;
+        self.combo_reset();
+    }
+    fn bad(&mut self) {
+        self.bad += 1;
+        self.combo_reset();
+    }
 }
 
 fn setup(mut commands: Commands) {
@@ -232,7 +257,7 @@ fn keyboard_input(
                 block_location: key.0,
             });
         } else {
-            sprite.color = BLOCK_NORMAL_COLOR;
+            sprite.color = BLOCK_NORMAL_COLOR
         }
     }
 }
@@ -241,16 +266,22 @@ fn block_judgement(
     mut commands: Commands,
     music_block_query: Query<(Entity, &Transform, &MusicBlock)>,
     mut key_press_event: EventReader<KeyPressEvent>,
+    mut score_board: ResMut<Scoreboard>,
 ) {
     for event in key_press_event.read() {
         for (entity, transform, music_block) in &music_block_query {
             if music_block.0 == event.block_location {
                 let music_y = transform.translation.y;
-
                 let level = JudgmentLevel::check(music_y);
 
-                if level != JudgmentLevel::None {
-                    println!("{:?}: {}", level, music_y);
+                if level != None {
+                    match level {
+                        Perfect => score_board.perfect(),
+                        Good => score_board.good(),
+                        Bad => score_board.bad(),
+                        _ => (),
+                    }
+                    println!("{:#?}", score_board);
                     commands.entity(entity).despawn();
                 }
             }
@@ -260,7 +291,7 @@ fn block_judgement(
 
 fn music_block_move(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in &mut query {
-        transform.translation.y += velocity.0;
+        transform.translation.y += velocity.0
     }
 }
 
@@ -271,10 +302,12 @@ fn create_music_block(mut commands: Commands) {
 fn despawn_music_block(
     mut commands: Commands,
     music_block_query: Query<(Entity, &Transform), With<MusicBlock>>,
+    mut score_board: ResMut<Scoreboard>,
 ) {
     for (entity, transform) in &music_block_query {
         if transform.translation.y < MUSIC_BLOCK_DESPAWN_POINT {
             commands.entity(entity).despawn();
+            score_board.combo_reset();
         }
     }
 }
