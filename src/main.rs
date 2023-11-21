@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 
-use self::JudgmentLevel::{Bad, Good, None, Perfect, Wonderful};
+use self::JudgmentLevel::{Bad, Good, Miss, None, Perfect, Wonderful};
 
 // キーを変更
 // TODO: 構造体で扱うかも
@@ -52,7 +52,7 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Music Game".into(),
-                resolution: (600., 840.).into(),
+                resolution: (600., 820.).into(),
                 enabled_buttons: bevy::window::EnabledButtons {
                     maximize: false,
                     ..default()
@@ -67,6 +67,7 @@ fn main() {
             perfect: 0,
             good: 0,
             bad: 0,
+            miss: 0,
         })
         .insert_resource(Time::<Fixed>::from_seconds(0.5))
         .add_event::<KeyPressEvent>()
@@ -120,6 +121,7 @@ struct Scoreboard {
     perfect: usize,
     good: usize,
     bad: usize,
+    miss: usize,
 }
 
 // TODO: music blckの種類の追加
@@ -133,6 +135,7 @@ enum JudgmentLevel {
     Perfect,
     Good,
     Bad,
+    Miss,
     None,
 }
 
@@ -238,7 +241,7 @@ impl TimingBundle {
 impl JudgmentLevel {
     fn check(block_position: f32) -> JudgmentLevel {
         match block_position {
-            // これどう修正するの、、、
+            // FIXME: これどう修正するの、、、
             TIMING_BLOCK_POSITION_Y => Wonderful,
             y if tuple_if(JUDGMENT_LEVEL_PERF, y) => Perfect,
             y if tuple_if(JUDGMENT_LEVEL_GOOD, y) => Good,
@@ -272,6 +275,10 @@ impl Scoreboard {
     }
     fn bad(&mut self) {
         self.bad += 1;
+        self.combo_reset();
+    }
+    fn miss(&mut self) {
+        self.miss += 1;
         self.combo_reset();
     }
 }
@@ -313,7 +320,7 @@ fn setup(mut commands: Commands) {
                     TextSection::from_style(text_style.clone()),
                 ])
                 .with_style(with_text_style.clone()),
-                JudgmentLevel::Perfect,
+                Perfect,
             ));
             parent.spawn((
                 TextBundle::from_sections([
@@ -321,15 +328,23 @@ fn setup(mut commands: Commands) {
                     TextSection::from_style(text_style.clone()),
                 ])
                 .with_style(with_text_style.clone()),
-                JudgmentLevel::Good,
+                Good,
             ));
             parent.spawn((
                 TextBundle::from_sections([
                     TextSection::new("Bad: ", text_style.clone()),
+                    TextSection::from_style(text_style.clone()),
+                ])
+                .with_style(with_text_style.clone()),
+                Bad,
+            ));
+            parent.spawn((
+                TextBundle::from_sections([
+                    TextSection::new("Miss: ", text_style.clone()),
                     TextSection::from_style(text_style),
                 ])
                 .with_style(with_text_style),
-                JudgmentLevel::Bad,
+                Miss,
             ));
         });
 }
@@ -386,10 +401,11 @@ fn update_scoreboard(
 ) {
     for (mut text, level) in &mut text_query {
         text.sections[1].value = match level {
-            JudgmentLevel::Wonderful => score_board.wonderful.to_string(),
-            JudgmentLevel::Perfect => score_board.perfect.to_string(),
-            JudgmentLevel::Good => score_board.good.to_string(),
-            JudgmentLevel::Bad => score_board.bad.to_string(),
+            Wonderful => score_board.wonderful.to_string(),
+            Perfect => score_board.perfect.to_string(),
+            Good => score_board.good.to_string(),
+            Bad => score_board.bad.to_string(),
+            Miss => score_board.miss.to_string(),
             _ => "".to_string(),
         }
     }
@@ -413,7 +429,7 @@ fn despawn_music_block(
     for (entity, transform) in &music_block_query {
         if transform.translation.y < MUSIC_BLOCK_DESPAWN_POINT {
             commands.entity(entity).despawn();
-            score_board.combo_reset();
+            score_board.miss();
         }
     }
 }
