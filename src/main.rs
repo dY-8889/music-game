@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 
-use self::JudgmentLevel::{Bad, Good, None, Perfect};
+use self::JudgmentLevel::{Bad, Good, None, Perfect, Wonderful};
 
 // キーを変更
 // TODO: 構造体で扱うかも
@@ -10,26 +10,42 @@ pub static mut TIMING_KEY_B: KeyCode = KeyCode::F;
 pub static mut TIMING_KEY_C: KeyCode = KeyCode::J;
 pub static mut TIMING_KEY_D: KeyCode = KeyCode::K;
 
+// 全てのブロックのサイズ
 const BLOCK_SIZE: Vec2 = Vec2::new(70., 20.);
-const BLOCK_NORMAL_COLOR: Color = Color::GRAY;
-const BLOCK_PRESSED_COLOR: Color = Color::RED;
 
 const TIMING_BLOCK_POSITION_Y: f32 = -220.0;
-
 const TIMING_BLOCK_A: Vec2 = Vec2::new(-BLOCK_SIZE.x * 2.0, TIMING_BLOCK_POSITION_Y);
 const TIMING_BLOCK_B: Vec2 = Vec2::new(-BLOCK_SIZE.x / 1.5, TIMING_BLOCK_POSITION_Y);
 const TIMING_BLOCK_C: Vec2 = Vec2::new(BLOCK_SIZE.x / 1.5, TIMING_BLOCK_POSITION_Y);
 const TIMING_BLOCK_D: Vec2 = Vec2::new(BLOCK_SIZE.x * 2.0, TIMING_BLOCK_POSITION_Y);
 
-const MUSIC_BLOCK_START: f32 = 300.0;
 const _MUSIC_BLOCK_SPEED: f32 = 550.0;
+// music blockの出現位置
+const MUSIC_BLOCK_START: f32 = 300.0;
+// music blcokの消滅位置
 const MUSIC_BLOCK_DESPAWN_POINT: f32 = -400.0;
-const MUSIC_BLOCK_COLOR: Color = Color::YELLOW;
 
 type JudLevel = (f32, f32);
 const JUDGMENT_LEVEL_PERF: JudLevel = (-210., -230.); // 判定の範囲
 const JUDGMENT_LEVEL_GOOD: JudLevel = (-180., -250.);
 const JUDGMENT_LEVEL_BAD: JudLevel = (-160., -270.);
+
+const SCOREBOARD_TEXT_SIZE: f32 = 30.0;
+const SCOREBOARD_PADDING: Val = Val::Px(4.0);
+const SCOREBOARD_TEXT_PADDING: Val = Val::Px(3.0);
+
+const MUSIC_BLOCK_COLOR: Color = Color::YELLOW;
+const BLOCK_NORMAL_COLOR: Color = Color::GRAY;
+const BLOCK_PRESSED_COLOR: Color = Color::RED;
+const SCOREBOARD_TEXT_COLOR: Color = Color::WHITE;
+
+mod music_block_scale {
+    use bevy::math::Vec2;
+
+    use crate::BLOCK_SIZE;
+
+    pub const NORMAL: Vec2 = BLOCK_SIZE;
+}
 
 fn main() {
     App::new()
@@ -47,6 +63,7 @@ fn main() {
         }))
         .insert_resource(Scoreboard {
             combo: 0,
+            wonderful: 0,
             perfect: 0,
             good: 0,
             bad: 0,
@@ -70,7 +87,7 @@ fn main() {
 }
 
 #[derive(Component)]
-struct MusicBlock(BlockLocation);
+struct MusicBlock(BlockLocation, MusicBlockKind);
 
 #[derive(Component)]
 struct TimingBlock(BlockLocation);
@@ -89,6 +106,34 @@ struct MusicBundle {
 struct TimingBundle {
     sprite_bundle: SpriteBundle,
     block: TimingBlock,
+}
+#[derive(Event)]
+struct KeyPressEvent {
+    block_location: BlockLocation,
+}
+
+#[warn(warnings)]
+#[derive(Resource)]
+struct Scoreboard {
+    combo: usize,
+    wonderful: usize,
+    perfect: usize,
+    good: usize,
+    bad: usize,
+}
+
+// TODO: music blckの種類の追加
+enum MusicBlockKind {
+    Normal,
+}
+
+#[derive(Component, PartialEq)]
+enum JudgmentLevel {
+    Wonderful,
+    Perfect,
+    Good,
+    Bad,
+    None,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -129,13 +174,22 @@ impl BlockLocation {
     }
 }
 
+impl MusicBlockKind {
+    fn scale(&self) -> Vec2 {
+        use self::music_block_scale::*;
+
+        match self {
+            MusicBlockKind::Normal => NORMAL,
+        }
+    }
+}
 impl MusicBundle {
-    fn new(location: BlockLocation) -> Self {
+    fn new(location: BlockLocation, kind: MusicBlockKind) -> Self {
         MusicBundle {
             sprite_bundle: SpriteBundle {
                 transform: Transform {
                     translation: location.music_position().extend(0.0),
-                    scale: BLOCK_SIZE.extend(0.0),
+                    scale: kind.scale().extend(0.0),
                     ..default()
                 },
                 sprite: Sprite {
@@ -144,7 +198,7 @@ impl MusicBundle {
                 },
                 ..default()
             },
-            block: MusicBlock(location),
+            block: MusicBlock(location, kind),
             velocity: Velocity(-5.0),
         }
     }
@@ -157,7 +211,7 @@ impl MusicBundle {
             3 => BlockLocation::D,
             _ => panic!(),
         };
-        MusicBundle::new(location)
+        MusicBundle::new(location, MusicBlockKind::Normal)
     }
 }
 
@@ -181,34 +235,11 @@ impl TimingBundle {
     }
 }
 
-#[derive(Event)]
-struct KeyPressEvent {
-    block_location: BlockLocation,
-}
-
-#[warn(warnings)]
-#[derive(Resource, Debug)]
-struct Scoreboard {
-    combo: usize,
-    perfect: usize,
-    good: usize,
-    bad: usize,
-}
-
-enum _BlockKind {}
-
-#[derive(Component, PartialEq)]
-enum JudgmentLevel {
-    _Wonderful,
-    Perfect,
-    Good,
-    Bad,
-    None,
-}
-
 impl JudgmentLevel {
     fn check(block_position: f32) -> JudgmentLevel {
         match block_position {
+            // これどう修正するの、、、
+            TIMING_BLOCK_POSITION_Y => Wonderful,
             y if tuple_if(JUDGMENT_LEVEL_PERF, y) => Perfect,
             y if tuple_if(JUDGMENT_LEVEL_GOOD, y) => Good,
             y if tuple_if(JUDGMENT_LEVEL_BAD, y) => Bad,
@@ -227,6 +258,10 @@ impl Scoreboard {
     fn combo_reset(&mut self) {
         self.combo = 0
     }
+    fn wonderful(&mut self) {
+        self.wonderful += 1;
+        self.combo();
+    }
     fn perfect(&mut self) {
         self.perfect += 1;
         self.combo();
@@ -240,11 +275,6 @@ impl Scoreboard {
         self.combo_reset();
     }
 }
-
-const SCOREBOARD_PADDING: Val = Val::Px(4.0);
-const SCOREBOARD_TEXT_SIZE: f32 = 30.0;
-const SCOREBOARD_TEXT_COLOR: Color = Color::WHITE;
-const SCOREBOARD_TEXT_PADDING: Val = Val::Px(3.0);
 
 fn setup(mut commands: Commands) {
     let text_style = TextStyle {
@@ -336,12 +366,13 @@ fn block_judgement(
 
                 if level != None {
                     match level {
+                        Wonderful => score_board.wonderful(),
                         Perfect => score_board.perfect(),
                         Good => score_board.good(),
                         Bad => score_board.bad(),
                         _ => (),
                     }
-                    println!("{:#?}", score_board);
+
                     commands.entity(entity).despawn();
                 }
             }
@@ -355,6 +386,7 @@ fn update_scoreboard(
 ) {
     for (mut text, level) in &mut text_query {
         text.sections[1].value = match level {
+            JudgmentLevel::Wonderful => score_board.wonderful.to_string(),
             JudgmentLevel::Perfect => score_board.perfect.to_string(),
             JudgmentLevel::Good => score_board.good.to_string(),
             JudgmentLevel::Bad => score_board.bad.to_string(),
