@@ -241,8 +241,9 @@ impl TimingBundle {
 impl JudgmentLevel {
     fn check(block_position: f32) -> JudgmentLevel {
         match block_position {
-            // FIXME: これどう修正するの、、、
-            TIMING_BLOCK_POSITION_Y => Wonderful,
+            // TIMING_BLOCK_POSITION_Y => Wonderful,
+            // 合っているかわからないけど一旦これで
+            y if TIMING_BLOCK_POSITION_Y == y => Wonderful,
             y if tuple_if(JUDGMENT_LEVEL_PERF, y) => Perfect,
             y if tuple_if(JUDGMENT_LEVEL_GOOD, y) => Good,
             y if tuple_if(JUDGMENT_LEVEL_BAD, y) => Bad,
